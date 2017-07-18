@@ -1,0 +1,244 @@
+\documentclass{beamer}
+
+\usetheme{Madrid}
+
+\setbeamercovered{transparent}
+
+
+\title{ \textbf{Instacart}\\ Market Basket Analysis}
+\subtitle{Which products will an Instacart consumer purchase again?}
+\author{Boriss Siliverstovs}
+
+\begin{document}
+%\SweaveOpts{concordance=TRUE}
+
+\maketitle
+
+\begin{frame}[fragile]
+\frametitle{Roadmap}
+\begin{itemize}
+  \item Motivation
+  \item Data
+  \item Results
+  \item Conclusions
+\end{itemize}
+\end{frame}
+
+\begin{frame}[fragile]
+\frametitle{Motivation: What do I do?}
+Running Kaggle competition\\
+(August 14, 2017 - Final submission deadline) \vspace{0.65cm}
+\begin{itemize}
+  \item< 2-6 > Data are provided by Instacart
+     \begin{itemize}
+        \item Online retail grocery shop in US
+        \item Founded in 2012
+        \item Present in 1,200 cities in 25 states (March 2017)
+        \item Valued at approximately 3.4 bln USD (March 2017) 
+     \end{itemize}\vspace{0.5cm}
+  \item< 3-6 > Data contain ordering history of Instacart customers  
+       \begin{itemize}
+          \item<4-6> \textit{Questions}: Which products will a consumer 
+              \begin{itemize}
+                 \item<4> add to their cart during the next order?
+                 \item<5> try for the first time?
+                 \item<6> purchase again?
+              \end{itemize} 
+       \end{itemize}  
+  \item< 7 > \textbf{Given a sequence of prior orders\\
+  which products will be re-ordered in the next order?}
+\end{itemize}
+\end{frame}
+
+\begin{frame}[fragile]\small
+\frametitle{Kaggle challenge: Predict re-ordered products}
+      \begin{table}[]
+      \centering
+      \caption{A typical consumer order}\label{my-label}
+        \begin{tabular}{lc}\hline\hline
+        Product                        & Reordered \\\hline
+                                       &         \\
+        Chocolate Sandwich Cookies     & 1         \\
+        Dry Nose Oil                   & 0         \\
+        Pure Coconut Water With Orange & 1         \\
+        Green Chile Anytime Sauce      & 0         \\\hline
+        \end{tabular}
+      \end{table}
+\vspace{-0.5cm}
+
+\begin{table}[]
+      \centering
+      \caption{(Correct) prediction}\label{my-label}
+        \begin{tabular}{lc}\hline\hline
+         Product                        & Reordered \\\hline
+                                        &         \\
+         Chocolate Sandwich Cookies     & 1         \\
+         Pure Coconut Water With Orange & 1         \\\hline
+        \end{tabular}
+\end{table}
+\end{frame}
+
+
+\begin{frame}[fragile]
+\frametitle{Motivation: Who cares?}
+(Online) retailers do\vspace{0.25cm}\pause
+\begin{itemize}
+  \item Complement/substitute shopping lists of customers
+     \begin{itemize}
+        \item by sending (accurate) personalised reminders
+     \end{itemize}
+  \item Time-saving shopping activity 
+     \begin{itemize}
+         \item Increase customer turnover
+     \end{itemize}
+  \item Better management of inventories
+  \item Allow dynamic pricing
+     \begin{itemize}
+        \item by offering personalised price tags/coupons
+     \end{itemize}\pause
+  \item Boost sales/revenues/market share 
+\end{itemize}\vspace{0.25cm}
+\pause
+I do:\vspace{0.25cm}
+\begin{itemize}
+  \item The Kaggle competition prize
+  \item Built up a reputation 
+\end{itemize}
+\end{frame}
+
+
+\begin{frame}[fragile]
+\frametitle{Data}\renewcommand{\baselinestretch}{1.5} 
+\begin{itemize}
+  \item 206,209 customers
+  \item 49,688 products
+  \begin{itemize}
+      \item 21 departments 
+      \item 134 aisles
+    \end{itemize} 
+  \item 3,421,083 orders
+    \begin{itemize}
+      \item 3,214,874 orders in the prior set 
+      \item 206,209 orders in the postprior set
+         \begin{itemize}
+           \item 131,209 orders in the \textbf{train} set 
+           \item 75,000 orders in the \textbf{test} set ( stored in Kaggle )
+         \end{itemize} 
+    \end{itemize} 
+\end{itemize}
+\end{frame}
+
+\begin{frame}[fragile]
+\frametitle{Data features}
+\begin{itemize}
+  \item Product-specific
+  \item User-specific
+  \item User-Product-specific
+  \item Train/Test-specific
+\end{itemize}
+\end{frame}
+
+
+\begin{frame}[fragile]
+\frametitle{Data features: Product-specific}
+\begin{itemize}
+  \item How many times a product was ordered
+  \item How many times a product was re-ordered
+      \begin{itemize}
+         \item Product re-order ratio
+       \end{itemize} 
+  \item How many times a product was ordered for the first time
+  \item How many times a product was ordered for the second time
+        \begin{itemize}
+         \item  Re-order propensity of a product
+       \end{itemize} 
+\end{itemize}
+\end{frame}
+
+
+\begin{frame}[fragile]
+\frametitle{Data features: User-specific}
+\begin{itemize}
+  \item Number of orders made by user
+  \item Number of all products ever ordered by user
+     \begin{itemize}
+        \item Average basket size
+     \end{itemize} 
+  \item Number of distinct products ever ordered by user
+  \item DOW/HOD - orders are typically made
+  \item Average ordering frequency in days
+  \item Average share of re-ordered products in each order
+  %share of new products in each order
+\end{itemize}
+\end{frame}
+
+
+\begin{frame}[fragile]
+\frametitle{Data features: User-Product-specific}
+\begin{itemize}
+  \item How many times user ordered product
+  \item Share of orders with a product in total number of orders
+  \item Share of orders with a product since this product was ordered for the first time
+  \item How many orders/days ago a product was ordered last time
+  \item Average position in ordering cart
+\end{itemize}
+\end{frame}
+
+\begin{frame}[fragile]
+\frametitle{Data features: Train/Test-specific}
+\begin{itemize}
+  \item Days since the last order in prior
+  \item Day of week order was made
+  \item Hour of day order was made
+\end{itemize}
+\end{frame}
+
+\begin{frame}[fragile]
+\frametitle{Data}
+\begin{itemize}
+  \item Running Kaggle competition
+  \begin{itemize}
+    \item Data are provided by Instacart
+    \item Online retail grocery shop in US
+    \item Ordering histo}y of Instacart customers
+    \item \textbf{Questions}: Which products will a consumer
+      \begin{itemize}
+        \item \textbf{purchase again?}
+        \item try for the first time?
+        \item add to their cart during the next order?
+      \end{itemize}
+  \end{itemize}
+\end{itemize}
+\end{frame}
+
+% 
+% \begin{frame}[fragile]
+% \frametitle{Roadmap}
+% Slides with code chunks need to be marked as "fragile"
+% 
+% \end{frame}
+% 
+% \begin{frame}[fragile]
+% \frametitle{Roadmap}
+% Slides with code chunks need to be marked as "fragile"
+% 
+% \end{frame}
+% 
+% \begin{frame}[fragile]
+% \frametitle{Roadmap}
+% Slides with code chunks need to be marked as "fragile"
+% <<>>=
+% set.seed(1)
+% x <- rnorm(100)
+% mean(x)
+% @
+% \end{frame}
+% 
+% \begin{frame}[fragile]
+% \frametitle{A graph from R}
+% <<echo=FALSE,fig.width=4,fig.height=3>>=
+% hist(x,col=4)
+% @
+% \end{frame}
+
+\end{document}
