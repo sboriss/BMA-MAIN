@@ -18,14 +18,15 @@ library(data.table)
 library(dplyr)
 library(tidyr)
 
-# functions
+# Functions ----------------------------------------------------------------
+
 fnGetMetrics             <- function( mX ){
   
   metrics = mX %>% 
     group_by( user_id ) %>%
     summarise( 
-      TP  = length( which( y_out * y_hat == 1 ) ), # number of True Positive
-      CP  = sum( y_out ),     #           condition positive: number of re-ordered items
+      TP  = length( which( y_act * y_hat == 1 ) ), # number of True Positive
+      CP  = sum( y_act ),     #           condition positive: number of re-ordered items
       PCP = sum( y_hat ), # predicted condition positive: predicted number of re-ordered items
       precision = ifelse( PCP == 0, 0, TP / PCP),
       recall    = ifelse(  CP == 0, 0, TP /  CP),
@@ -37,17 +38,30 @@ fnGetMetrics             <- function( mX ){
 
 # Load Data ---------------------------------------------------------------
 
-setwd('c:/BBB/PROPACAD/CAPSTONE/BASKET/SLIDE/')
+# setwd('c:/BBB/PROPACAD/CAPSTONE/BASKET/SLIDE/')
+# 
+# path <- "./input"
+# #path <- "./DATA"
+# 
+# aisles      <- fread(file.path(path, "aisles.csv"))
+# departments <- fread(file.path(path, "departments.csv"))
+# orderp      <- fread(file.path(path, "order_products__prior.csv"))
+# ordert      <- fread(file.path(path, "order_products__train.csv"))
+# orders      <- fread(file.path(path, "orders.csv"))
+# products    <- fread(file.path(path, "products.csv"))
 
-path <- "./input"
-#path <- "./DATA"
+# Load Data from MTEC-0373 ------------------------------------------------
 
-aisles      <- fread(file.path(path, "aisles.csv"))
-departments <- fread(file.path(path, "departments.csv"))
-orderp      <- fread(file.path(path, "order_products__prior.csv"))
-ordert      <- fread(file.path(path, "order_products__train.csv"))
-orders      <- fread(file.path(path, "orders.csv"))
-products    <- fread(file.path(path, "products.csv"))
+path_main = "C:/Users/sboriss/PROPACAD/"
+path_data = paste0(path_main, 'DATA/')
+path_subm = paste0(path_main, 'SUBM/')
+
+orders      <- fread( paste0(path_data, 'orders.csv') ) 
+products    <- fread( paste0(path_data, 'products.csv'             ) )
+ordert      <- fread( paste0(path_data, 'order_products__train.csv') )
+orderp      <- fread( paste0(path_data, 'order_products__prior.csv') )
+aisles      <- fread( paste0(path_data, 'aisles.csv'               ) )
+departments <- fread( paste0(path_data, 'departments.csv'          ) )
 
 orderp_tmp <- head( orderp, n = 100 )
 orders_tmp <- head( orders, n = 100 )
@@ -81,30 +95,167 @@ gc()
 
 #get user_id in train set
 user_id_train = orders %>% filter( eval_set == "train") %>%
-                           select( user_id)
+  select( user_id)
 user_id_train = user_id_train$user_id
 
-# repeat last order
-repeat_last_order <- orderp_products %>% group_by( user_id ) %>% 
-                             filter( order_number == max(order_number) ) %>%
-                             arrange( user_id, product_id ) %>%
-                             ungroup() %>% 
-                             select( user_id, product_id ) %>%
-                             mutate( y_hat = 1 ) %>% #                     
-                             full_join( ordert,  by = c("user_id", "product_id") ) %>%
-                             group_by( user_id, product_id ) %>%
-                             arrange( user_id, product_id ) %>%
-                             mutate( y_out = reordered ) %>%
-                             filter( user_id %in% user_id_train )
+#collect metrics for benchmarks
 
-repeat_last_order$y_out[ is.na(repeat_last_order$y_out) ] = 0
+list_bnch = list()
+
+# repeat last order ------------------------------------
+repeat_last_order <- orderp_products %>% 
+  filter( user_id %in% user_id_train )  %>%
+  group_by( user_id ) %>% 
+  filter( order_number == max(order_number) ) %>%
+  arrange( user_id, product_id ) %>% 
+  select( user_id, product_id ) %>%
+  mutate( y_hat = 1 ) %>% #                     
+  full_join( ordert,  by = c("user_id", "product_id") ) %>%
+  group_by( user_id, product_id ) %>%
+  arrange( user_id, product_id ) %>%
+  mutate( y_act = reordered ) %>%
+  replace_na( list( y_act = 0 ) ) %>%
+  replace_na( list( y_hat = 0 ) )
+  
+mtrx_repeat_last_order_ud = fnGetMetrics( repeat_last_order )
+
+mtrx_repeat_last_order = apply( mtrx_repeat_last_order_ud, 2, summary ) %>% as.data.frame %>% select( -user_id ) %>% round( digits = 3 )
+mtrx_repeat_last_order
+
+list_bnch$repeat_last_order = mtrx_repeat_last_order
+
+rm( repeat_last_order )
+
+# repeat last re-order
+repeat_last_re_order <- orderp_products %>% 
+  filter( user_id %in% user_id_train )  %>%
+  group_by( user_id ) %>% 
+  filter( order_number == max(order_number) ) %>%
+  arrange( user_id, product_id ) %>% 
+  select( user_id, product_id, reordered ) %>%
+  mutate( y_hat = reordered ) %>% 
+  select( -reordered ) %>% 
+  full_join( ordert,  by = c("user_id", "product_id") ) %>%
+  group_by( user_id, product_id ) %>%
+  arrange( user_id, product_id ) %>%
+  mutate( y_act = reordered ) %>%
+  replace_na( list( y_act = 0 ) ) %>%
+  replace_na( list( y_hat = 0 ) )
+
+mtrx_repeat_last_re_order_ud = fnGetMetrics( repeat_last_re_order )
+
+mtrx_repeat_last_re_order    = apply( mtrx_repeat_last_re_order_ud, 2, summary ) %>% as.data.frame %>% select( -user_id ) %>% round( digits = 3 )
+mtrx_repeat_last_re_order
+
+list_bnch$repeat_last_re_order = mtrx_repeat_last_re_order
+
+rm( repeat_last_re_order )
+
+# repeat last two re-orders
+repeat_last_2_re_order <- orderp_products %>% 
+  filter( user_id %in% user_id_train )  %>%
+  group_by( user_id ) %>% 
+  filter( order_number == max(order_number) | order_number == max(order_number - 1) ) %>%
+  arrange( user_id, product_id ) %>% 
+  select( user_id, product_id, reordered ) %>%
+  filter( reordered == 1 ) %>%
+  ungroup() %>%
+  group_by( user_id, product_id ) %>%
+  mutate( product_time = row_number() ) %>%
+  filter( product_time == 1) %>% # retain unique product_id
+  arrange(user_id, product_id) %>%
+  mutate( y_hat = reordered) %>%
+  select( -product_time, -reordered ) %>%
+  full_join( ordert,  by = c("user_id", "product_id") ) %>%
+  group_by( user_id, product_id ) %>%
+  arrange( user_id, product_id ) %>%
+  mutate( y_act = reordered ) %>%
+  replace_na( list( y_act = 0 ) ) %>%
+  replace_na( list( y_hat = 0 ) )
 
 
-repeat_last_order_tmp = repeat_last_order %>% head( 100 )
+mtrx_repeat_last_2_re_order_ud = fnGetMetrics( repeat_last_2_re_order )
 
-fnGetMetrics( repeat_last_order_tmp )
-                             
-                             
+mtrx_repeat_last_2_re_order    = apply( mtrx_repeat_last_2_re_order_ud, 2, summary ) %>% as.data.frame %>% select( -user_id ) %>% round( digits = 3 )
+mtrx_repeat_last_2_re_order
+
+list_bnch$repeat_last_2_re_order = mtrx_repeat_last_2_re_order
+
+rm( repeat_last_2_re_order )
+
+# repeat last three re-orders
+repeat_last_3_re_order <- orderp_products %>% 
+  filter( user_id %in% user_id_train )  %>%
+  group_by( user_id ) %>% 
+  filter( order_number == max(order_number) | order_number == max(order_number - 1) | order_number == max(order_number - 2) ) %>%
+  arrange( user_id, product_id ) %>% 
+  select( user_id, product_id, reordered ) %>%
+  filter( reordered == 1 ) %>%
+  ungroup() %>%
+  group_by( user_id, product_id ) %>%
+  mutate( product_time = row_number() ) %>%
+  filter( product_time == 1) %>% # retain unique product_id
+  arrange(user_id, product_id) %>%
+  mutate( y_hat = reordered) %>%
+  select( -product_time, -reordered ) %>%
+  full_join( ordert,  by = c("user_id", "product_id") ) %>%
+  group_by( user_id, product_id ) %>%
+  arrange( user_id, product_id ) %>%
+  mutate( y_act = reordered ) %>%
+  replace_na( list( y_act = 0 ) ) %>%
+  replace_na( list( y_hat = 0 ) )
+
+
+mtrx_repeat_last_3_re_order_ud = fnGetMetrics( repeat_last_3_re_order )
+
+mtrx_repeat_last_3_re_order    = apply( mtrx_repeat_last_3_re_order_ud, 2, summary ) %>% as.data.frame %>% select( -user_id ) %>% round( digits = 3 )
+mtrx_repeat_last_3_re_order
+
+list_bnch$repeat_last_3_re_order = mtrx_repeat_last_3_re_order
+
+rm( repeat_last_3_re_order )
+
+# choose TOP N products (rank according to how many times a product was ordered ) 
+TOP_N = 10
+
+list_TOP_N = lapply( seq( TOP_N ), function( TOP_n ){
+
+  TOP_N_order = orderp_products %>% 
+    filter( user_id %in% user_id_train )  %>%
+    arrange(user_id, order_number, product_id) %>%
+    group_by(user_id, product_id) %>%
+    mutate(product_time = row_number()) %>%
+    arrange( user_id, product_id) %>%
+    summarise( product_time_max = max(product_time) ) %>%
+    ungroup() %>%
+    group_by( user_id ) %>%
+    arrange( user_id, desc( product_time_max ) )  %>%
+    mutate( rank = dense_rank( -product_time_max ) ) %>%
+    mutate( rank = replace( rank, product_time_max == 1, 100 ) )  %>%
+#    mutate( rank = replace( rank, product_time_max == 2, 100 ) )  %>%
+    filter( rank <= TOP_n ) %>%
+    mutate( y_hat = 1) %>%
+    select( -product_time_max ) %>%
+    full_join( ordert,  by = c("user_id", "product_id") ) %>%
+    group_by( user_id, product_id ) %>%
+    arrange( user_id, product_id ) %>%
+    mutate( y_act = reordered ) %>%
+    replace_na( list( y_act = 0 ) ) %>%
+    replace_na( list( y_hat = 0 ) )
+  
+  mtrx_TOP_N_order_ud = fnGetMetrics( TOP_N_order )
+
+  rm( TOP_N_order )
+  
+  mtrx_TOP_N_order    = apply( mtrx_TOP_N_order_ud, 2, summary ) %>% as.data.frame %>% select( -user_id ) %>% round( digits = 3 )
+  mtrx_TOP_N_order
+})
+names( list_TOP_N ) = paste0("TOP_N_", seq( TOP_N ) )
+list_TOP_N
+
+list_bnch$TOP_N = list_TOP_N 
+
+list_bnch
 
 # Products ----------------------------------------------------------------
 prd <- orderp_products %>%
@@ -198,237 +349,237 @@ hist( data$user_average_basket, main = "Average order size per user" )
 
 
 if(FALSE){
-# Train / Test datasets ---------------------------------------------------
-train_all <- as.data.frame(data[data$eval_set == "train",])
-
-#split train into train (in) and validation (ud) sets: random selection of user_id (one order_id per user)
-user_id_train_all  = unique( train_all$user_id ) #select user_id in train
-
-user_id_train_in   = c( user_id_train_all %>% as.data.frame %>% sample_frac(0.1) )$.
-length( user_id_train_in )
-
-#train train set
-train_in = train_all %>% filter( user_id %in% user_id_train_in )
-
-#validation train set
-train_ud = train_all %>% filter( !(user_id %in% user_id_train_in ) )
-
-rm( train_all )
-
-#remove unnecessary variables in train part
-train_in$eval_set   <- NULL
-train_in$user_id    <- NULL
-train_in$product_id <- NULL
-train_in$order_id   <- NULL
-train_in$reordered[is.na(train_in$reordered)] <- 0
-
-#remove unnecessary variables in validation part
-train_ud$eval_set  = NULL
-train_ud$user_id   = NULL
-train_ud$reordered[is.na(train_ud$reordered)] <- 0
-
-#remove unnecessary variables in test part
-test <- as.data.frame(data[data$eval_set == "test",])
-test$eval_set  <- NULL
-test$user_id   <- NULL
-test$reordered <- NULL
-
-if(FALSE){
-#reserve train for insample analysis
-train_insample = as.data.frame(data[data$eval_set == "train",])
-
-user_id_train  = unique( train_insample$user_id ) #select user_id in train
-user_id_tmp    = head( user_id_train )
-data_tmp       = head( data, n = 100 )
-
-#retain all orders in train_insample by user_id_tmp
-train_insample_tmp = train_insample %>% filter( user_id %in% user_id_tmp )
-train_insample_tmp$eval_set  = NULL
-train_insample_tmp$user_id   = NULL
-train_insample_tmp$reordered[is.na(train_insample_tmp$reordered)] <- 0
-
-#clean train_insample data
-train_insample$eval_set  = NULL
-train_insample$user_id   = NULL
-train_insample$reordered[is.na(train_insample$reordered)] <- 0
-}
-
-rm(data)
-gc()
-
-
-# Model -------------------------------------------------------------------
-library(xgboost)
-
-
-#original setup
-# params <- list(
-#   "objective"           = "reg:logistic",
-#   "eval_metric"         = "logloss",
-#   "eta"                 = 0.1,
-#   "max_depth"           = 6,  
-#   "min_child_weight"    = 10,
-#   "gamma"               = 0.70,
-#   "subsample"           = 0.76,
-#   "colsample_bytree"    = 0.95,
-#   "alpha"               = 2e-05,
-#   "lambda"              = 10
-# )
-
-params <- list(
-  "objective"           = "reg:logistic",
-  "eval_metric"         = "logloss",
-  "eta"                 = 0.1,
-  "max_depth"           = 5,  
-  "min_child_weight"    = 1,
-  "gamma"               = 0.70,
-  "subsample"           = 1,
-  "colsample_bytree"    = 0.95,
-  "alpha"               = 2e-05,
-  "lambda"              = 6
-)
-
-
-X     <- xgb.DMatrix( as.matrix( train_in %>% select(-reordered) ), label = train_in$reordered )
-model <- xgboost(data = X, params = params, nrounds = 80)
-
-importance <- xgb.importance(colnames(X), model = model)
-xgb.ggplot.importance(importance)
-
-rm(X, importance, train_in)
-gc()
-
-# predict baskets for train_ud --------------------------------------
-X <- xgb.DMatrix(as.matrix(train_ud %>% select( -order_id, -product_id, -reordered )))
-train_ud$reordered_hat <- predict(model, X)
-
-hist( train_ud$reordered_hat )
-
-### identify re-ordering customers in train_ud
-hist( train_ud$user_reorder_ratio )
-hist( train_ud$up_order_rate )
-train_ud_tmp = head( train_ud, n = 100 )
-
-order_of_reordering_users = train_ud %>% 
-                            group_by( order_id ) %>% 
-                            summarise(
-                              mean_up_order_rate = mean( up_order_rate )          
-                            ) %>%
-                            filter( mean_up_order_rate == 1)
-                          
-                                
-
-#cutoff = 0.21
-
-cutoff = seq(0.10, 0.23, by = 0.01)
-
-meanF1score = sapply(cutoff, function( x ){
-
-  train_ud$reordered_lab <- (train_ud$reordered_hat > x ) * 1
+  # Train / Test datasets ---------------------------------------------------
+  train_all <- as.data.frame(data[data$eval_set == "train",])
   
-  metrics = train_ud %>% 
-    group_by( order_id ) %>%
-    summarise( 
-      TP  = length( which(reordered * reordered_lab == 1 ) ), # number of True Positive
-      CP  = sum( reordered ), # condition positive: number of ordered items
-      PCP = sum( reordered_lab ), #predicted condition positive: predicted number of ordered items
-      precision = ifelse( PCP == 0, 0, TP / PCP),
-      recall    = ifelse(  CP == 0, 0, TP /  CP),
-      f1score   = ifelse( any( c( precision, recall ) == 0), 0, 2 * precision * recall / ( precision + recall) )
-    )
-  #metrics_tmp = head( metrics, n = 100 )
+  #split train into train (in) and validation (ud) sets: random selection of user_id (one order_id per user)
+  user_id_train_all  = unique( train_all$user_id ) #select user_id in train
   
-  mean( metrics$f1score )
-})
-
-names( meanF1score ) = cutoff
-
-meanF1score = as.data.frame( meanF1score )
-colnames( meanF1score ) = paste( "max_depth", params$max_depth, sep = "_" )
-
-plot( cutoff, meanF1score[, 1] )
-
-meanF1score
-
-# max_depth_6
-# 0.1    0.3402069
-# 0.11   0.3479049
-# 0.12   0.3541398
-# 0.13   0.3589328
-# 0.14   0.3627650
-# 0.15   0.3653806
-# 0.16   0.3669857
-# 0.17   0.3671211
-# 0.18   0.3667456
-# 0.19   0.3655384
-# 0.2    0.3638240
-# 0.21   0.3618351
-# 0.22   0.3592490
-# 0.23   0.3559091
-
-# max_depth_5_lambda_10
-# 0.1    0.3427718
-# 0.11   0.3497660
-# 0.12   0.3555940
-# 0.13   0.3600113
-# 0.14   0.3635354
-# 0.15   0.3655204
-# 0.16   0.3668564
-# 0.17   0.3671419
-# 0.18   0.3669872
-# 0.19   0.3656256
-# 0.2    0.3638076
-# 0.21   0.3616907
-# 0.22   0.3590538
-# 0.23   0.3560371
-
-# max_depth_5_lambda_6_eta_0.1
-# 0.1    0.3430155
-# 0.11   0.3500617
-# 0.12   0.3559013
-# 0.13   0.3603665
-# 0.14   0.3636732
-# 0.15   0.3658532
-# 0.16   0.3674942
-# 0.17   0.3678709
-# 0.18   0.3674549
-# 0.19   0.3661955
-# 0.2    0.3643848
-# 0.21   0.3622416
-# 0.22   0.3599396
-# 0.23   0.3570330
-
-# max_depth_5_lambda_6_eta_0.3
-# 0.1    0.3406844
-# 0.11   0.3473349
-# 0.12   0.3527421
-# 0.13   0.3569525
-# 0.14   0.3603944
-# 0.15   0.3626488
-# 0.16   0.3639017
-# 0.17   0.3643383
-# 0.18   0.3643278
-# 0.19   0.3635641
-# 0.2    0.3620901
-# 0.21   0.3601053
-# 0.22   0.3578439
-# 0.23   0.3551498
-
-# max_depth_4
-# 0.1    0.3412091
-# 0.11   0.3480324
-# 0.12   0.3532126
-# 0.13   0.3577682
-# 0.14   0.3609189
-# 0.15   0.3633011
-# 0.16   0.3646763
-# 0.17   0.3655233
-# 0.18   0.3653750
-# 0.19   0.3643997
-# 0.2    0.3632505
-# 0.21   0.3612474
-# 0.22   0.3587185
-# 0.23   0.3560231
+  user_id_train_in   = c( user_id_train_all %>% as.data.frame %>% sample_frac(0.1) )$.
+  length( user_id_train_in )
+  
+  #train train set
+  train_in = train_all %>% filter( user_id %in% user_id_train_in )
+  
+  #validation train set
+  train_ud = train_all %>% filter( !(user_id %in% user_id_train_in ) )
+  
+  rm( train_all )
+  
+  #remove unnecessary variables in train part
+  train_in$eval_set   <- NULL
+  train_in$user_id    <- NULL
+  train_in$product_id <- NULL
+  train_in$order_id   <- NULL
+  train_in$reordered[is.na(train_in$reordered)] <- 0
+  
+  #remove unnecessary variables in validation part
+  train_ud$eval_set  = NULL
+  train_ud$user_id   = NULL
+  train_ud$reordered[is.na(train_ud$reordered)] <- 0
+  
+  #remove unnecessary variables in test part
+  test <- as.data.frame(data[data$eval_set == "test",])
+  test$eval_set  <- NULL
+  test$user_id   <- NULL
+  test$reordered <- NULL
+  
+  if(FALSE){
+    #reserve train for insample analysis
+    train_insample = as.data.frame(data[data$eval_set == "train",])
+    
+    user_id_train  = unique( train_insample$user_id ) #select user_id in train
+    user_id_tmp    = head( user_id_train )
+    data_tmp       = head( data, n = 100 )
+    
+    #retain all orders in train_insample by user_id_tmp
+    train_insample_tmp = train_insample %>% filter( user_id %in% user_id_tmp )
+    train_insample_tmp$eval_set  = NULL
+    train_insample_tmp$user_id   = NULL
+    train_insample_tmp$reordered[is.na(train_insample_tmp$reordered)] <- 0
+    
+    #clean train_insample data
+    train_insample$eval_set  = NULL
+    train_insample$user_id   = NULL
+    train_insample$reordered[is.na(train_insample$reordered)] <- 0
+  }
+  
+  rm(data)
+  gc()
+  
+  
+  # Model -------------------------------------------------------------------
+  library(xgboost)
+  
+  
+  #original setup
+  # params <- list(
+  #   "objective"           = "reg:logistic",
+  #   "eval_metric"         = "logloss",
+  #   "eta"                 = 0.1,
+  #   "max_depth"           = 6,  
+  #   "min_child_weight"    = 10,
+  #   "gamma"               = 0.70,
+  #   "subsample"           = 0.76,
+  #   "colsample_bytree"    = 0.95,
+  #   "alpha"               = 2e-05,
+  #   "lambda"              = 10
+  # )
+  
+  params <- list(
+    "objective"           = "reg:logistic",
+    "eval_metric"         = "logloss",
+    "eta"                 = 0.1,
+    "max_depth"           = 5,  
+    "min_child_weight"    = 1,
+    "gamma"               = 0.70,
+    "subsample"           = 1,
+    "colsample_bytree"    = 0.95,
+    "alpha"               = 2e-05,
+    "lambda"              = 6
+  )
+  
+  
+  X     <- xgb.DMatrix( as.matrix( train_in %>% select(-reordered) ), label = train_in$reordered )
+  model <- xgboost(data = X, params = params, nrounds = 80)
+  
+  importance <- xgb.importance(colnames(X), model = model)
+  xgb.ggplot.importance(importance)
+  
+  rm(X, importance, train_in)
+  gc()
+  
+  # predict baskets for train_ud --------------------------------------
+  X <- xgb.DMatrix(as.matrix(train_ud %>% select( -order_id, -product_id, -reordered )))
+  train_ud$reordered_hat <- predict(model, X)
+  
+  hist( train_ud$reordered_hat )
+  
+  ### identify re-ordering customers in train_ud
+  hist( train_ud$user_reorder_ratio )
+  hist( train_ud$up_order_rate )
+  train_ud_tmp = head( train_ud, n = 100 )
+  
+  order_of_reordering_users = train_ud %>% 
+    group_by( order_id ) %>% 
+    summarise(
+      mean_up_order_rate = mean( up_order_rate )          
+    ) %>%
+    filter( mean_up_order_rate == 1)
+  
+  
+  
+  #cutoff = 0.21
+  
+  cutoff = seq(0.10, 0.23, by = 0.01)
+  
+  meanF1score = sapply(cutoff, function( x ){
+    
+    train_ud$reordered_lab <- (train_ud$reordered_hat > x ) * 1
+    
+    metrics = train_ud %>% 
+      group_by( order_id ) %>%
+      summarise( 
+        TP  = length( which(reordered * reordered_lab == 1 ) ), # number of True Positive
+        CP  = sum( reordered ), # condition positive: number of ordered items
+        PCP = sum( reordered_lab ), #predicted condition positive: predicted number of ordered items
+        precision = ifelse( PCP == 0, 0, TP / PCP),
+        recall    = ifelse(  CP == 0, 0, TP /  CP),
+        f1score   = ifelse( any( c( precision, recall ) == 0), 0, 2 * precision * recall / ( precision + recall) )
+      )
+    #metrics_tmp = head( metrics, n = 100 )
+    
+    mean( metrics$f1score )
+  })
+  
+  names( meanF1score ) = cutoff
+  
+  meanF1score = as.data.frame( meanF1score )
+  colnames( meanF1score ) = paste( "max_depth", params$max_depth, sep = "_" )
+  
+  plot( cutoff, meanF1score[, 1] )
+  
+  meanF1score
+  
+  # max_depth_6
+  # 0.1    0.3402069
+  # 0.11   0.3479049
+  # 0.12   0.3541398
+  # 0.13   0.3589328
+  # 0.14   0.3627650
+  # 0.15   0.3653806
+  # 0.16   0.3669857
+  # 0.17   0.3671211
+  # 0.18   0.3667456
+  # 0.19   0.3655384
+  # 0.2    0.3638240
+  # 0.21   0.3618351
+  # 0.22   0.3592490
+  # 0.23   0.3559091
+  
+  # max_depth_5_lambda_10
+  # 0.1    0.3427718
+  # 0.11   0.3497660
+  # 0.12   0.3555940
+  # 0.13   0.3600113
+  # 0.14   0.3635354
+  # 0.15   0.3655204
+  # 0.16   0.3668564
+  # 0.17   0.3671419
+  # 0.18   0.3669872
+  # 0.19   0.3656256
+  # 0.2    0.3638076
+  # 0.21   0.3616907
+  # 0.22   0.3590538
+  # 0.23   0.3560371
+  
+  # max_depth_5_lambda_6_eta_0.1
+  # 0.1    0.3430155
+  # 0.11   0.3500617
+  # 0.12   0.3559013
+  # 0.13   0.3603665
+  # 0.14   0.3636732
+  # 0.15   0.3658532
+  # 0.16   0.3674942
+  # 0.17   0.3678709
+  # 0.18   0.3674549
+  # 0.19   0.3661955
+  # 0.2    0.3643848
+  # 0.21   0.3622416
+  # 0.22   0.3599396
+  # 0.23   0.3570330
+  
+  # max_depth_5_lambda_6_eta_0.3
+  # 0.1    0.3406844
+  # 0.11   0.3473349
+  # 0.12   0.3527421
+  # 0.13   0.3569525
+  # 0.14   0.3603944
+  # 0.15   0.3626488
+  # 0.16   0.3639017
+  # 0.17   0.3643383
+  # 0.18   0.3643278
+  # 0.19   0.3635641
+  # 0.2    0.3620901
+  # 0.21   0.3601053
+  # 0.22   0.3578439
+  # 0.23   0.3551498
+  
+  # max_depth_4
+  # 0.1    0.3412091
+  # 0.11   0.3480324
+  # 0.12   0.3532126
+  # 0.13   0.3577682
+  # 0.14   0.3609189
+  # 0.15   0.3633011
+  # 0.16   0.3646763
+  # 0.17   0.3655233
+  # 0.18   0.3653750
+  # 0.19   0.3643997
+  # 0.2    0.3632505
+  # 0.21   0.3612474
+  # 0.22   0.3587185
+  # 0.23   0.3560231
 }
 
 if( FALSE ){
@@ -455,15 +606,15 @@ if( FALSE ){
   train_insample_tmp$reordered_lab <- (train_insample_tmp$reordered_hat > 0.21) * 1
   
   metrics = train_insample_tmp %>% 
-            group_by( order_id ) %>%
-            summarise( 
-              TP  = length( which(reordered * reordered_lab == 1 ) ), # number of True Positive
-              CP  = sum( reordered ), # condition positive: number of ordered items
-              PCP = sum( reordered_lab ), #predicted condition positive: predicted number of ordered items
-              precision = TP / PCP,
-              recall    = TP / CP,
-              f1score   = 2 * precision * recall / ( precision + recall)
-            )
+    group_by( order_id ) %>%
+    summarise( 
+      TP  = length( which(reordered * reordered_lab == 1 ) ), # number of True Positive
+      CP  = sum( reordered ), # condition positive: number of ordered items
+      PCP = sum( reordered_lab ), #predicted condition positive: predicted number of ordered items
+      precision = TP / PCP,
+      recall    = TP / CP,
+      f1score   = 2 * precision * recall / ( precision + recall)
+    )
   metrics
   
   mean( metrics$f1score )
