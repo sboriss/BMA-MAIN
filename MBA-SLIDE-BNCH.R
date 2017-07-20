@@ -268,7 +268,7 @@ list_bnch$TOP_N = list_TOP_N
 
 list_bnch
 
-# apply last-3-re-order bnch to test set
+# apply last-3-re-order bnch to test set--------------------
 repeat_last_3_re_order_test <- orderp_products %>% 
   filter( user_id %in% user_id_test ) %>%
   group_by( user_id ) %>% 
