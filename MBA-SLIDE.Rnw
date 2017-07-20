@@ -14,6 +14,119 @@
 
 \maketitle
 
+<<echo=FALSE, message = FALSE, warning = FALSE>>=
+cat("\014")  # clear console
+rm(list=ls(all=TRUE))
+
+library(data.table)
+library(dplyr)
+library(tidyr)
+
+# from http://monkeysuncle.stanford.edu/?p=485
+error.bar <- function(x, y, upper, lower=upper, length=0.1,...){
+if(length(x) != length(y) | length(y) !=length(lower) | length(lower) != length(upper))
+stop("vectors must be same length")
+arrows(x,y+upper, x, y-lower, angle=90, code=3, length=length, ...)
+}
+
+
+# Load Data ---------------------------------------------------------------
+
+setwd('c:/BBB/PROPACAD/CAPSTONE/BASKET/SLIDE/')
+
+path <- "./input"
+#path <- "./DATA"
+
+orderp      <- fread(file.path(path, "order_products__prior.csv"))
+orders      <- fread(file.path(path, "orders.csv"))
+
+#retain only orders from prior
+orderp_products <- orders %>% inner_join(orderp, by = "order_id")
+orderp_products_tmp = head( orderp_products, n = 100 )
+
+rm( orders )
+rm( orderp )
+
+bs = NA
+bs_dow = rs_dow = seq(7)
+bs_hod = rs_hod = seq(24)
+
+if(FALSE){
+#basket size
+basket_size = orderp_products %>% 
+  group_by( user_id, order_number ) %>%
+  summarise( basket_size = n() ) %>% 
+  ungroup( ) %>%
+  group_by(user_id) %>% 
+  summarise( ave_basket_size = mean( basket_size ) )
+
+bs = basket_size$ave_basket_size
+rm( basket_size )
+
+#basket size by DOW
+basket_size_by_DOW = orderp_products %>% 
+  group_by( user_id, order_number ) %>%
+  summarise( basket_size = n(), order_dow= mean( order_dow) ) %>%
+  ungroup() %>%
+  group_by( order_dow ) %>%
+  summarise( obs_by_dow = n(), ave_basket_size_dow = mean( basket_size ), sd = sd( basket_size ) / sqrt( n() ) , min = min( basket_size ), max = max(basket_size)  )
+
+bs_dow    = basket_size_by_DOW$ave_basket_size_dow
+bs_dow.sd = basket_size_by_DOW$sd
+
+rm(basket_size_by_dow)
+  
+#basket size by HOD
+basket_size_by_HOD = orderp_products %>% 
+  group_by( user_id, order_number ) %>%
+  summarise( basket_size = n(), order_hour_of_day = mean( order_hour_of_day ) ) %>%
+  ungroup() %>%
+  group_by( order_hour_of_day ) %>%
+  summarise( obs_by_hod = n(), ave_basket_size_hod = mean( basket_size ), sd = sd( basket_size ) / sqrt( n() ), min = min( basket_size ), max = max(basket_size)  )
+
+bs_hod = basket_size_by_HOD$ave_basket_size_hod
+bs_hod.sd = basket_size_by_HOD$sd
+rm(basket_size_by_HOD)
+
+#reordering rate
+reorder_share = orderp_products %>% filter( order_number > 1 ) %>%
+                 group_by( user_id, order_number ) %>%
+                 summarise( reorder_share = mean( reordered ) ) 
+rs = reorder_share$reorder_share
+rm( reorder_share )
+                
+#reordering rate by dow
+reorder_share_by_dow = orderp_products %>% filter( order_number > 1 ) %>% 
+                                  group_by( user_id, order_dow ) %>%
+                                  summarise( reorder_share = mean( reordered) ) %>%
+                                  ungroup() %>%
+                                  group_by( order_dow ) %>%
+                                  summarise( reorder_share_dow = mean( reorder_share ), sd = sd( reorder_share ) / sqrt( n() )  )
+
+#reordering rate by dow
+reorder_share_by_dow = orderp_products %>% filter( order_number > 1 ) %>% 
+  group_by( user_id, order_dow ) %>%
+  summarise( reorder_share = mean( reordered) ) %>%
+  ungroup() %>%
+  group_by( order_dow ) %>%
+  summarise( reorder_share_dow = mean( reorder_share ), sd = sd( reorder_share ) / sqrt( n() )  )
+
+
+rs_dow = reorder_share_by_dow$reorder_share_dow
+rm( reorder_share_by_dow )  
+
+reorder_share_by_hod = orderp_products %>% filter( order_number > 1 ) %>% 
+  group_by( user_id, order_hour_of_day ) %>%
+  summarise( reorder_share = mean( reordered) ) %>%
+  ungroup() %>%
+  group_by( order_hour_of_day ) %>%
+  summarise( reorder_share_hod = mean( reorder_share ), sd = sd( reorder_share ) / sqrt( n() )  )
+
+rs_hod = reorder_share_by_hod$reorder_share_hod
+rm(reorder_share_by_hod)
+}
+@
+
 \begin{frame}[fragile]
 \frametitle{Roadmap}
 \begin{itemize}
@@ -193,36 +306,147 @@ I do:\vspace{0.25cm}
 \end{itemize}
 \end{frame}
 
-\begin{frame}[fragile]
-\frametitle{Data}
+
+\begin{frame}[fragile]\tiny
+\frametitle{Kaggle challenge: Predict re-ordered products}
+      \begin{table}[]
+      \centering
+      \caption{A typical consumer order}\label{my-label}
+        \begin{tabular}{lc}\hline\hline
+        Product                        & Reordered \\\hline
+                                       &         \\
+        Chocolate Sandwich Cookies     & 1         \\
+        Dry Nose Oil                   & 0         \\
+        Pure Coconut Water With Orange & 1         \\
+        Green Chile Anytime Sauce      & 0         \\\hline
+        \end{tabular}
+      \end{table}
+\vspace{-0.5cm}
+
+\begin{table}[]
+      \centering
+      \caption{(Correct) prediction}\label{my-label}
+        \begin{tabular}{lc}\hline\hline
+         Product                        & Reordered \\\hline
+                                        &         \\
+         Chocolate Sandwich Cookies     & 1         \\
+         Pure Coconut Water With Orange & 1         \\\hline
+        \end{tabular}
+\end{table}\pause
+
+Ordering habits of a user:
 \begin{itemize}
-  \item Running Kaggle competition
-  \begin{itemize}
-    \item Data are provided by Instacart
-    \item Online retail grocery shop in US
-    \item Ordering histo}y of Instacart customers
-    \item \textbf{Questions}: Which products will a consumer
-      \begin{itemize}
-        \item \textbf{purchase again?}
-        \item try for the first time?
-        \item add to their cart during the next order?
-      \end{itemize}
-  \end{itemize}
+  \item Basket size
+  \item Share of re-ordered products
+\end{itemize}\pause
+Investigate their variation with data features
+\end{frame}
+
+\begin{frame}[fragile]
+\frametitle{Data: basket size}
+\vspace{-0.5cm}
+<<echo=FALSE,fig.width=5,fig.height=4>>=
+hist( bs, main = "Average basket size (across users)", freq = F, n = 100, xlab = ""  )
+abline( v = mean( bs ), lwd = 2, col = 'red')
+abline( v = quantile( bs, 0.95 ), lwd = 2, col = 'blue')
+@
+\end{frame}
+
+
+\begin{frame}[fragile]
+\frametitle{Data: basket size by DOW}
+\vspace{-0.5cm}
+<<echo=FALSE, warning = FALSE, fig.width=5,fig.height=4>>=
+midpts = barplot( bs_dow, main = "Average basket size by DOW" )
+text(x=midpts, y=-1, seq(0,6), cex=0.8, srt=45, xpd=TRUE)
+error.bar(midpts,bs_dow, 1.96*bs_dow.sd )
+
+#barx <- barplot(y.means, names.arg=1:5,ylim=c(0,1.5), col="blue", axis.lty=1, xlab="Replicates", ylab="Value (arbitrary units)")
+#error.bar(barx,y.means, 1.96*y.sd/10)
+@
+\end{frame}
+
+
+\begin{frame}[fragile]
+\frametitle{Data: basket size by HOD}
+\vspace{-0.5cm}
+<<echo=FALSE,fig.width=5,fig.height=4>>=
+midpts = barplot( bs_hod, main = "Average basket size by HOD" )
+text(x=midpts, y=-1, seq(0,23), cex=0.8, srt=45, xpd=TRUE)
+error.bar(midpts,bs_hod, 1.96*bs_hod.sd )
+@
+\end{frame}
+
+
+\begin{frame}[fragile]
+\frametitle{Data: reorder share}
+\vspace{-0.5cm}
+<<echo=FALSE,fig.width=5,fig.height=4>>=
+hist( rs, main = "Reorder share (across users and orders)", freq = F, n = 100, xlab = ""  )
+@
+\end{frame}
+
+
+\begin{frame}[fragile]
+\frametitle{Data: Reorder share by DOW}
+\vspace{-0.5cm}
+<<echo=FALSE, warning = FALSE, fig.width=5,fig.height=4>>=
+midpts = barplot( rs_dow, main = "Reorder share by DOW" )
+text(x=midpts, y=-0.075, seq(0,6), cex=0.8, srt=45, xpd=TRUE)
+
+@
+\end{frame}
+
+
+\begin{frame}[fragile]
+\frametitle{Data: Reorder share by HOD}
+\vspace{-0.5cm}
+<<echo=FALSE,fig.width=5,fig.height=4>>=
+midpts = barplot( rs_hod, main = "Reorder share by HOD" )
+text(x=midpts, y=-0.075, seq(0,23), cex=0.8, srt=45, xpd=TRUE)
+@
+\end{frame}
+
+
+\begin{frame}[fragile]
+\frametitle{Evaluation metrics: mean F$_1$ score}
+
+F$_1$ score is the harmonic mean of:
+\begin{itemize}
+  \item $p$ - precision: share of correct predictions in total number of predictions, $\widehat{x}$ 
+  \item $r$ - recall: share of correct predictions in total number of outturns, $x$
+\end{itemize}
+
+
+\begin{align*}
+p(x, \widehat{x}) = \frac{ \left| x \cap \widehat{x} \right| }{ \left| \widehat{x} \right|} & & r(x, \widehat{x}) = \frac{ \left| x \cap \widehat{x} \right| }{ \left| x \right|}
+\end{align*}
+
+\[
+F_1 score = 2*\frac{1}{\frac{1}{p} + \frac{1}{r}} = 2*\frac{p*r}{p+r} \in \left[0,1\right]
+\]
+
+\begin{itemize}
+  \item At Kaggle: take average of individual F$_1$ scores
 \end{itemize}
 \end{frame}
 
-% 
-% \begin{frame}[fragile]
-% \frametitle{Roadmap}
-% Slides with code chunks need to be marked as "fragile"
-% 
-% \end{frame}
-% 
-% \begin{frame}[fragile]
-% \frametitle{Roadmap}
-% Slides with code chunks need to be marked as "fragile"
-% 
-% \end{frame}
+\begin{frame}[fragile]
+\frametitle{Benchmark models}\renewcommand{\baselinestretch}{1.5} 
+\begin{itemize}
+  \item Repeat last order
+  \item Repeat reordered items in last order
+  \item Repeat reordered items in two last orders
+  \item Repeat reordered items in three last orders
+    \begin{itemize}
+      \item Kaggle Leadership Board:\\ 
+            F$_1$ score = 0.3587 (1,059th place out of 1,694)\\
+            F$_1^{MAX}$ score = 0.4070
+    \end{itemize}
+\end{itemize}
+\end{frame}
+
+
 % 
 % \begin{frame}[fragile]
 % \frametitle{Roadmap}
