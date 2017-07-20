@@ -38,30 +38,31 @@ fnGetMetrics             <- function( mX ){
 
 # Load Data ---------------------------------------------------------------
 
-# setwd('c:/BBB/PROPACAD/CAPSTONE/BASKET/SLIDE/')
-# 
-# path <- "./input"
-# #path <- "./DATA"
-# 
-# aisles      <- fread(file.path(path, "aisles.csv"))
-# departments <- fread(file.path(path, "departments.csv"))
-# orderp      <- fread(file.path(path, "order_products__prior.csv"))
-# ordert      <- fread(file.path(path, "order_products__train.csv"))
-# orders      <- fread(file.path(path, "orders.csv"))
-# products    <- fread(file.path(path, "products.csv"))
+setwd('c:/BBB/PROPACAD/CAPSTONE/BASKET/SLIDE/')
+
+path <- "./input"
+path_subm <- "./SUBM"
+#path <- "./DATA"
+
+aisles      <- fread(file.path(path, "aisles.csv"))
+departments <- fread(file.path(path, "departments.csv"))
+orderp      <- fread(file.path(path, "order_products__prior.csv"))
+ordert      <- fread(file.path(path, "order_products__train.csv"))
+orders      <- fread(file.path(path, "orders.csv"))
+products    <- fread(file.path(path, "products.csv"))
 
 # Load Data from MTEC-0373 ------------------------------------------------
 
-path_main = "C:/Users/sboriss/PROPACAD/"
-path_data = paste0(path_main, 'DATA/')
-path_subm = paste0(path_main, 'SUBM/')
-
-orders      <- fread( paste0(path_data, 'orders.csv') ) 
-products    <- fread( paste0(path_data, 'products.csv'             ) )
-ordert      <- fread( paste0(path_data, 'order_products__train.csv') )
-orderp      <- fread( paste0(path_data, 'order_products__prior.csv') )
-aisles      <- fread( paste0(path_data, 'aisles.csv'               ) )
-departments <- fread( paste0(path_data, 'departments.csv'          ) )
+# path_main = "C:/Users/sboriss/PROPACAD/"
+# path_data = paste0(path_main, 'DATA/')
+# path_subm = paste0(path_main, 'SUBM/')
+# 
+# orders      <- fread( paste0(path_data, 'orders.csv') ) 
+# products    <- fread( paste0(path_data, 'products.csv'             ) )
+# ordert      <- fread( paste0(path_data, 'order_products__train.csv') )
+# orderp      <- fread( paste0(path_data, 'order_products__prior.csv') )
+# aisles      <- fread( paste0(path_data, 'aisles.csv'               ) )
+# departments <- fread( paste0(path_data, 'departments.csv'          ) )
 
 orderp_tmp <- head( orderp, n = 100 )
 orders_tmp <- head( orders, n = 100 )
@@ -88,7 +89,7 @@ ordert_tmp1    <- head( ordert, n = 100 )
 
 #retain only orders from prior
 orderp_products     = orders %>% inner_join(orderp, by = "order_id")
-orderp_products_tmp = head( orderp_products, n = 100 )
+orderp_products_tmp = head( orderp_products, n = 300 )
 
 rm(orderp)
 gc()
@@ -98,9 +99,15 @@ user_id_train = orders %>% filter( eval_set == "train") %>%
   select( user_id)
 user_id_train = user_id_train$user_id
 
+user_order_test = orders %>% filter( eval_set == "test") %>% select( user_id, order_id )
+user_id_test = user_order_test$user_id
+
+
+
 #collect metrics for benchmarks
 
 list_bnch = list()
+
 
 # repeat last order ------------------------------------
 repeat_last_order <- orderp_products %>% 
@@ -116,7 +123,7 @@ repeat_last_order <- orderp_products %>%
   mutate( y_act = reordered ) %>%
   replace_na( list( y_act = 0 ) ) %>%
   replace_na( list( y_hat = 0 ) )
-  
+
 mtrx_repeat_last_order_ud = fnGetMetrics( repeat_last_order )
 
 mtrx_repeat_last_order = apply( mtrx_repeat_last_order_ud, 2, summary ) %>% as.data.frame %>% select( -user_id ) %>% round( digits = 3 )
@@ -126,7 +133,8 @@ list_bnch$repeat_last_order = mtrx_repeat_last_order
 
 rm( repeat_last_order )
 
-# repeat last re-order
+
+# repeat last re-order --------------------------
 repeat_last_re_order <- orderp_products %>% 
   filter( user_id %in% user_id_train )  %>%
   group_by( user_id ) %>% 
@@ -151,7 +159,8 @@ list_bnch$repeat_last_re_order = mtrx_repeat_last_re_order
 
 rm( repeat_last_re_order )
 
-# repeat last two re-orders
+
+# repeat last two re-orders ---------------------------
 repeat_last_2_re_order <- orderp_products %>% 
   filter( user_id %in% user_id_train )  %>%
   group_by( user_id ) %>% 
@@ -183,7 +192,8 @@ list_bnch$repeat_last_2_re_order = mtrx_repeat_last_2_re_order
 
 rm( repeat_last_2_re_order )
 
-# repeat last three re-orders
+
+# repeat last three re-orders ----------------------------------
 repeat_last_3_re_order <- orderp_products %>% 
   filter( user_id %in% user_id_train )  %>%
   group_by( user_id ) %>% 
@@ -215,11 +225,12 @@ list_bnch$repeat_last_3_re_order = mtrx_repeat_last_3_re_order
 
 rm( repeat_last_3_re_order )
 
-# choose TOP N products (rank according to how many times a product was ordered ) 
+
+# choose TOP N products (rank according to how many times a product was ordered ) --------------
 TOP_N = 10
 
 list_TOP_N = lapply( seq( TOP_N ), function( TOP_n ){
-
+  
   TOP_N_order = orderp_products %>% 
     filter( user_id %in% user_id_train )  %>%
     arrange(user_id, order_number, product_id) %>%
@@ -232,7 +243,7 @@ list_TOP_N = lapply( seq( TOP_N ), function( TOP_n ){
     arrange( user_id, desc( product_time_max ) )  %>%
     mutate( rank = dense_rank( -product_time_max ) ) %>%
     mutate( rank = replace( rank, product_time_max == 1, 100 ) )  %>%
-#    mutate( rank = replace( rank, product_time_max == 2, 100 ) )  %>%
+    #    mutate( rank = replace( rank, product_time_max == 2, 100 ) )  %>%
     filter( rank <= TOP_n ) %>%
     mutate( y_hat = 1) %>%
     select( -product_time_max ) %>%
@@ -244,7 +255,7 @@ list_TOP_N = lapply( seq( TOP_N ), function( TOP_n ){
     replace_na( list( y_hat = 0 ) )
   
   mtrx_TOP_N_order_ud = fnGetMetrics( TOP_N_order )
-
+  
   rm( TOP_N_order )
   
   mtrx_TOP_N_order    = apply( mtrx_TOP_N_order_ud, 2, summary ) %>% as.data.frame %>% select( -user_id ) %>% round( digits = 3 )
@@ -257,6 +268,93 @@ list_bnch$TOP_N = list_TOP_N
 
 list_bnch
 
+# apply last-3-re-order bnch to test set
+repeat_last_3_re_order_test <- orderp_products %>% 
+  filter( user_id %in% user_id_test ) %>%
+  group_by( user_id ) %>% 
+  filter( order_number == max(order_number) | order_number == max(order_number - 1) | order_number == max(order_number - 2) ) %>%
+  arrange( user_id, product_id ) %>% 
+  select( user_id, order_id, product_id, reordered ) %>%
+  mutate( order_id_prior = order_id ) %>%
+  select( -order_id ) %>%
+  filter( reordered == 1 ) %>%
+  ungroup() %>%
+  group_by( user_id, product_id ) %>%
+  mutate( product_time = row_number() ) %>%
+  filter( product_time == 1) %>% # retain unique product_id
+  arrange(user_id, product_id) %>%
+  mutate( y_hat = reordered) %>%
+  inner_join( user_order_test, by="user_id")
+
+repeat_last_3_re_order_test_tmp = repeat_last_3_re_order_test %>% head( 100 )
+
+submission0 <- repeat_last_3_re_order_test %>%
+  group_by(order_id) %>%
+  summarise(
+    products = paste(product_id, collapse = " ")
+  )
+missing <- data.frame(
+  order_id = unique( user_order_test$order_id[ which( !( user_order_test$order_id  %in% submission$order_id) )] ),
+  products = "None"
+)
+
+# OPTION: for those with missing values get all ordered products
+
+submission <- submission0 %>% bind_rows(missing) %>% arrange(order_id)
+dim( submission )
+
+#look at users w/o re-ordered products in last 3 orders
+miss_user = user_order_test %>% inner_join( missing, by = 'order_id')
+miss_user_orderp = orderp_products %>% inner_join( miss_user, by = 'user_id')
+
+#get all reoders for those who did not re-order in the last 3 orders
+miss_user_all_re_order = orderp_products %>% 
+  select( -order_id ) %>%
+  inner_join( miss_user, by = 'user_id') %>%
+  filter( reordered == 1 ) %>%
+  group_by( user_id, product_id ) %>%
+  mutate( product_time = row_number() ) %>%
+  filter( product_time == 1 ) %>%
+  arrange(user_id, product_id) %>%
+  mutate( y_hat = 1 ) %>%
+  select( user_id, order_id, product_id, y_hat )
+  
+submission1 = miss_user_all_re_order %>%
+  group_by(order_id) %>%
+  summarise(
+    products = paste(product_id, collapse = " ")
+  )
+
+submission2 = submission0 %>% bind_rows(submission1) %>% arrange(order_id)
+missing1 <- data.frame(
+  order_id = unique( user_order_test$order_id[ which( !( user_order_test$order_id  %in% submission2$order_id) )] ),
+  products = "None"
+)
+
+#look at users w/o re-ordered products at all: list all orders
+miss_user1 = user_order_test %>% inner_join( missing1, by = 'order_id' )
+
+miss_user1_all_order = orderp_products %>% 
+  select( -order_id ) %>%
+  inner_join( miss_user1, by = 'user_id') %>%
+  group_by( user_id, product_id ) %>%
+  mutate( product_time = row_number() ) %>%
+  filter( product_time == 1 ) %>%
+  arrange(user_id, product_id) %>%
+  mutate( y_hat = 1 ) %>%
+  select( user_id, order_id, product_id, y_hat )
+
+submission3 = miss_user1_all_order %>%
+  group_by(order_id) %>%
+  summarise(
+    products = paste(product_id, collapse = " ")
+  )
+
+submission4 = submission0 %>% bind_rows(submission1) %>% bind_rows(submission3) %>% arrange(order_id)
+
+write.csv(submission, file = file.path(path_subm, "submit_bnch_L3RO.csv"), row.names = F)
+
+if(FALSE){
 # Products ----------------------------------------------------------------
 prd <- orderp_products %>%
   arrange(user_id, order_number, product_id) %>%
@@ -279,6 +377,7 @@ prd <- prd %>% select(-prod_reorders, -prod_first_orders, -prod_second_orders)
 
 rm(products)
 gc()
+
 
 # Users -------------------------------------------------------------------
 users <- orders %>%
@@ -310,6 +409,7 @@ users <- users %>% inner_join(us)
 
 rm(us)
 gc()
+
 
 
 # Database ----------------------------------------------------------------
@@ -621,6 +721,9 @@ if( FALSE ){
 }
 
 
+
+
+}
 # Apply model -------------------------------------------------------------
 if(FALSE){
   X <- xgb.DMatrix(as.matrix(test %>% select(-order_id, -product_id)))
